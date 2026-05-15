@@ -1,6 +1,7 @@
 import os
 import logging
 import asyncio
+import concurrent.futures
 from flask import Flask, request, jsonify
 from bot import bot, dp
 from aiogram.types import Update
@@ -16,9 +17,16 @@ if not BASE_WEBHOOK_URL:
     BASE_WEBHOOK_URL = 'https://telegram-test-bot-3u0f.onrender.com'
 WEBHOOK_PATH = f'/webhook/{BOT_TOKEN}'
 
-# Создаём один event loop для всего приложения
+# Создаём один постоянный event loop в фоновом потоке
 loop = asyncio.new_event_loop()
-asyncio.set_event_loop(loop)
+
+def start_background_loop():
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+# Запускаем фоновый поток с event loop
+import threading
+threading.Thread(target=start_background_loop, daemon=True).start()
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -26,29 +34,24 @@ def health():
 
 @app.route(WEBHOOK_PATH, methods=['POST'])
 def webhook():
-    """Быстрая обработка всех обновлений от Telegram"""
+    """Мгновенная обработка вебхука без ожидания"""
     try:
         update_data = request.get_json()
         
-        # Запускаем обработку асинхронно
+        # Отправляем задачу в фоновый event loop
         async def process():
             update = Update.model_validate(update_data, context={"bot": bot})
             await dp.feed_update(bot, update)
         
-        # Ждём завершения обработки
-        future = asyncio.run_coroutine_threadsafe(process(), loop)
-        future.result(timeout=10)
+        # Не ждём результат! Ставим в очередь и сразу отвечаем
+        asyncio.run_coroutine_threadsafe(process(), loop)
         
+        # Мгновенный ответ Telegram, чтобы не было таймаута
         return jsonify({"status": "ok"}), 200
         
-    except asyncio.TimeoutError:
-        logger.error("Ошибка: обработка заняла больше 10 секунд")
-        return jsonify({"status": "timeout"}), 200
     except Exception as e:
-        logger.error(f"Ошибка: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"status": "error"}), 200
+        logger.error(f"Ошибка при получении вебхука: {e}")
+        return jsonify({"status": "ok"}), 200  # Всегда отвечаем 200
 
 def set_webhook():
     """Установка вебхука при запуске"""
@@ -57,11 +60,12 @@ def set_webhook():
     
     async def setup():
         await bot.delete_webhook()
-        # Убираем параметр timeout, так как он не поддерживается
         await bot.set_webhook(webhook_url)
         logger.info("✅ Вебхук установлен")
     
-    loop.run_until_complete(setup())
+    # Запускаем в нашем фоновом event loop
+    future = asyncio.run_coroutine_threadsafe(setup(), loop)
+    future.result(timeout=30)
 
 if __name__ == "__main__":
     set_webhook()
