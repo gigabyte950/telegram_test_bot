@@ -4,7 +4,6 @@ import asyncio
 from flask import Flask, request, jsonify
 from bot import bot, dp
 from aiogram.types import Update
-from aiogram import types
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,7 +28,6 @@ def health():
 def webhook():
     """Быстрая обработка всех обновлений от Telegram"""
     try:
-        # Получаем данные
         update_data = request.get_json()
         
         # Запускаем обработку асинхронно
@@ -37,20 +35,20 @@ def webhook():
             update = Update.model_validate(update_data, context={"bot": bot})
             await dp.feed_update(bot, update)
         
-        # Ждём завершения обработки (не больше 10 секунд)
+        # Ждём завершения обработки
         future = asyncio.run_coroutine_threadsafe(process(), loop)
-        future.result(timeout=10)  # Важно: не больше 10 секунд для callback-запросов
+        future.result(timeout=10)
         
         return jsonify({"status": "ok"}), 200
         
     except asyncio.TimeoutError:
         logger.error("Ошибка: обработка заняла больше 10 секунд")
-        return jsonify({"status": "timeout"}), 200  # Возвращаем 200, чтобы Telegram не повторял
+        return jsonify({"status": "timeout"}), 200
     except Exception as e:
         logger.error(f"Ошибка: {e}")
         import traceback
         traceback.print_exc()
-        return jsonify({"status": "error"}), 200  # Всегда возвращаем 200
+        return jsonify({"status": "error"}), 200
 
 def set_webhook():
     """Установка вебхука при запуске"""
@@ -59,7 +57,8 @@ def set_webhook():
     
     async def setup():
         await bot.delete_webhook()
-        await bot.set_webhook(webhook_url, timeout=30)
+        # Убираем параметр timeout, так как он не поддерживается
+        await bot.set_webhook(webhook_url)
         logger.info("✅ Вебхук установлен")
     
     loop.run_until_complete(setup())
