@@ -1,15 +1,16 @@
-# bot.py - основная логика Telegram бота
+# bot.py - основная логика Telegram бота (совместимая с aiogram 3.28.2)
 
 import asyncio
 import logging
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command
-from aiogram.fsm import State, StatesGroup
-from aiogram.fsm.context import FSMContext
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, FSInputFile
-from datetime import datetime
 import csv
 import io
+from datetime import datetime
+
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup  # <--- ИМПОРТ ИСПРАВЛЕН
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 
 from config import BOT_TOKEN, ADMIN_ID
 import database as db
@@ -28,9 +29,7 @@ class AnketaForm(StatesGroup):
     waiting_for_phone = State()
 
 # ---------- КЛАВИАТУРЫ ----------
-
 def get_main_keyboard():
-    """Главная клавиатура для обычного пользователя"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📝 Заполнить анкету", callback_data="fill_anketa")],
         [InlineKeyboardButton(text="📊 Мои данные", callback_data="my_data")]
@@ -38,7 +37,6 @@ def get_main_keyboard():
     return keyboard
 
 def get_admin_keyboard():
-    """Админская клавиатура"""
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="👥 Список пользователей", callback_data="admin_users")],
         [InlineKeyboardButton(text="📎 Выгрузить CSV", callback_data="admin_export")]
@@ -46,10 +44,8 @@ def get_admin_keyboard():
     return keyboard
 
 # ---------- ОБРАБОТЧИКИ ----------
-
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    """Обработчик команды /start"""
     user_name = message.from_user.first_name
     welcome_text = f"""
 👋 Привет, {user_name}!
@@ -65,7 +61,6 @@ async def cmd_start(message: types.Message):
 
 @dp.message(Command("admin"))
 async def cmd_admin(message: types.Message):
-    """Админ-панель (только для администратора)"""
     if message.from_user.id != ADMIN_ID:
         await message.answer("⛔ У вас нет доступа к этой команде!")
         return
@@ -81,10 +76,8 @@ async def cmd_admin(message: types.Message):
 
 @dp.callback_query(F.data == "fill_anketa")
 async def start_anketa(callback: types.CallbackQuery, state: FSMContext):
-    """Начало заполнения анкеты"""
     await callback.answer()
     
-    # Проверяем, заполнял ли пользователь анкету раньше
     if db.user_exists(callback.from_user.id):
         user_data = db.get_user(callback.from_user.id)
         await callback.message.answer(
@@ -100,7 +93,6 @@ async def start_anketa(callback: types.CallbackQuery, state: FSMContext):
 
 @dp.message(AnketaForm.waiting_for_full_name)
 async def process_full_name(message: types.Message, state: FSMContext):
-    """Получаем ФИО и спрашиваем телефон"""
     if len(message.text.strip()) < 3:
         await message.answer("❌ ФИО слишком короткое. Введите полное имя (минимум 3 символа):")
         return
@@ -111,10 +103,7 @@ async def process_full_name(message: types.Message, state: FSMContext):
 
 @dp.message(AnketaForm.waiting_for_phone)
 async def process_phone(message: types.Message, state: FSMContext):
-    """Получаем телефон и сохраняем данные"""
     phone = message.text.strip()
-    
-    # Простая проверка: удаляем все кроме цифр и смотрим длину
     digits_only = ''.join(filter(str.isdigit, phone))
     if len(digits_only) < 10:
         await message.answer("❌ Номер телефона слишком короткий. Введите полный номер (минимум 10 цифр):")
@@ -123,7 +112,6 @@ async def process_phone(message: types.Message, state: FSMContext):
     user_data = await state.get_data()
     full_name = user_data['full_name']
     
-    # Сохраняем в базу
     is_new = db.save_user(message.from_user.id, full_name, phone)
     
     if is_new:
@@ -143,9 +131,7 @@ async def process_phone(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "my_data")
 async def show_my_data(callback: types.CallbackQuery):
-    """Показать данные текущего пользователя"""
     await callback.answer()
-    
     user_data = db.get_user(callback.from_user.id)
     
     if user_data:
@@ -163,26 +149,22 @@ async def show_my_data(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "admin_users")
 async def admin_show_users(callback: types.CallbackQuery):
-    """Админ: показать список всех пользователей"""
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("Нет доступа!", show_alert=True)
         return
     
     await callback.answer()
-    
     users = db.get_all_users()
     
     if not users:
         await callback.message.answer("📭 Пока нет ни одного пользователя.")
         return
     
-    # Формируем список
     text = "👥 **Список пользователей:**\n\n"
     for i, user in enumerate(users, 1):
         text += f"{i}. {user['full_name']} — {user['phone']}\n"
         text += f"   📅 {user['created_at']}\n\n"
     
-    # Если текст слишком длинный - обрезаем
     if len(text) > 4000:
         text = text[:3950] + "\n\n... (список обрезан)"
     
@@ -190,40 +172,25 @@ async def admin_show_users(callback: types.CallbackQuery):
 
 @dp.callback_query(F.data == "admin_export")
 async def admin_export_csv(callback: types.CallbackQuery):
-    """Админ: выгрузить всех пользователей в CSV"""
     if callback.from_user.id != ADMIN_ID:
         await callback.answer("Нет доступа!", show_alert=True)
         return
     
     await callback.answer()
-    
     users = db.get_all_users()
     
     if not users:
         await callback.message.answer("📭 Нет данных для выгрузки.")
         return
     
-    # Создаем CSV в памяти
     output = io.StringIO()
     writer = csv.writer(output, delimiter=';')
-    
-    # Заголовки
     writer.writerow(["ID", "Telegram ID", "ФИО", "Телефон", "Дата заполнения"])
     
-    # Данные
     for i, user in enumerate(users, 1):
-        writer.writerow([
-            i,
-            user['telegram_id'],
-            user['full_name'],
-            user['phone'],
-            user['created_at']
-        ])
+        writer.writerow([i, user['telegram_id'], user['full_name'], user['phone'], user['created_at']])
     
-    # Отправляем файл
     output.seek(0)
-    from aiogram.types import BufferedInputFile
-    
     file_bytes = output.getvalue().encode('utf-8-sig')
     file = BufferedInputFile(file_bytes, filename="users.csv")
     
@@ -233,22 +200,14 @@ async def admin_export_csv(callback: types.CallbackQuery):
     )
 
 # ---------- ЗАПУСК ----------
-
 async def main():
-    """Главная функция запуска бота"""
-    # Инициализируем базу данных
     db.init_db()
-    
     logger.info("🚀 Бот запущен и готов к работе!")
-    
-    # Запускаем polling
     await dp.start_polling(bot)
 
-# Для локального запуска
 if __name__ == "__main__":
     asyncio.run(main())
 
 # Для импорта на хостинге
 def run_bot():
-    """Функция для запуска бота из app.py"""
     asyncio.run(main())
