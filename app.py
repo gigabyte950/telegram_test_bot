@@ -1,6 +1,7 @@
 import os
 import logging
 from flask import Flask, request, jsonify
+import requests
 import asyncio
 from bot import bot, dp
 from aiogram.types import Update
@@ -26,12 +27,12 @@ def webhook():
     """Обработка входящих обновлений"""
     try:
         update_data = request.get_json()
+        logger.info(f"Получен запрос: {str(update_data)[:100]}...")
         
         async def process():
             update = Update.model_validate(update_data, context={"bot": bot})
             await dp.feed_update(bot, update)
         
-        # Запускаем обработку
         asyncio.run(process())
         
         return jsonify({"status": "ok"}), 200
@@ -47,7 +48,6 @@ def set_webhook():
     webhook_url = f"{BASE_WEBHOOK_URL}{WEBHOOK_PATH}"
     logger.info(f"Установка вебхука на: {webhook_url}")
     
-    import requests
     response = requests.post(
         f"https://api.telegram.org/bot{BOT_TOKEN}/setWebhook",
         json={"url": webhook_url}
@@ -57,4 +57,5 @@ def set_webhook():
 if __name__ == "__main__":
     set_webhook()
     port = int(os.environ.get('PORT', 5000))
+    logger.info(f"Запуск Flask на порту {port}")
     app.run(host='0.0.0.0', port=port)
