@@ -7,9 +7,9 @@ import io
 from datetime import datetime
 
 from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter
+from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup  # <--- ИМПОРТ ИСПРАВЛЕН
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, BufferedInputFile
 
 from config import BOT_TOKEN, ADMIN_ID
@@ -19,7 +19,7 @@ import database as db
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализация бота и диспетчера
+# Инициализация бота и диспетчера (ЭТИ ОБЪЕКТЫ ТЕПЕРЬ МОЖНО ИМПОРТИРОВАТЬ)
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -43,7 +43,7 @@ def get_admin_keyboard():
     ])
     return keyboard
 
-# ---------- ОБРАБОТЧИКИ ----------
+# ---------- ОБРАБОТЧИКИ (ОНИ НЕ ИЗМЕНИЛИСЬ) ----------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_name = message.from_user.first_name
@@ -199,15 +199,9 @@ async def admin_export_csv(callback: types.CallbackQuery):
         caption=f"📎 Выгрузка пользователей от {datetime.now().strftime('%Y-%m-%d')}"
     )
 
-# ---------- ЗАПУСК ----------
-async def main():
-    db.init_db()
-    logger.info("🚀 Бот запущен и готов к работе!")
-    await dp.start_polling(bot)
+# ========== ИСПРАВЛЕНИЕ ЗДЕСЬ ==========
+# Удаляем ВЕСЬ код, который запускал бота (asyncio.run(main()) и run_bot()).
+# Теперь бот будет запускаться только из app.py через вебхуки.
+# Объекты bot, dp и все обработчики остаются для импорта.
 
-if __name__ == "__main__":
-    asyncio.run(main())
-
-# Для импорта на хостинге
-def run_bot():
-    asyncio.run(main())
+print("✅ Бот успешно импортирован. Обработчики загружены.")
