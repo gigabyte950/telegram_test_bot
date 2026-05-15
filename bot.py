@@ -19,7 +19,7 @@ import database as db
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Инициализация бота и диспетчера (ЭТИ ОБЪЕКТЫ ТЕПЕРЬ МОЖНО ИМПОРТИРОВАТЬ)
+# Инициализация бота и диспетчера
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
 
@@ -43,7 +43,7 @@ def get_admin_keyboard():
     ])
     return keyboard
 
-# ---------- ОБРАБОТЧИКИ (ОНИ НЕ ИЗМЕНИЛИСЬ) ----------
+# ---------- ОБРАБОТЧИКИ ----------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_name = message.from_user.first_name
@@ -76,7 +76,7 @@ async def cmd_admin(message: types.Message):
 
 @dp.callback_query(F.data == "fill_anketa")
 async def start_anketa(callback: types.CallbackQuery, state: FSMContext):
-    await callback.answer()
+    await callback.answer()  # Важно: закрываем "загрузку"
     
     if db.user_exists(callback.from_user.id):
         user_data = db.get_user(callback.from_user.id)
@@ -131,7 +131,7 @@ async def process_phone(message: types.Message, state: FSMContext):
 
 @dp.callback_query(F.data == "my_data")
 async def show_my_data(callback: types.CallbackQuery):
-    await callback.answer()
+    await callback.answer()  # Важно: закрываем "загрузку"
     user_data = db.get_user(callback.from_user.id)
     
     if user_data:
@@ -153,7 +153,7 @@ async def admin_show_users(callback: types.CallbackQuery):
         await callback.answer("Нет доступа!", show_alert=True)
         return
     
-    await callback.answer()
+    await callback.answer()  # Важно: закрываем "загрузку"
     users = db.get_all_users()
     
     if not users:
@@ -176,7 +176,7 @@ async def admin_export_csv(callback: types.CallbackQuery):
         await callback.answer("Нет доступа!", show_alert=True)
         return
     
-    await callback.answer()
+    await callback.answer()  # Важно: закрываем "загрузку"
     users = db.get_all_users()
     
     if not users:
@@ -199,9 +199,9 @@ async def admin_export_csv(callback: types.CallbackQuery):
         caption=f"📎 Выгрузка пользователей от {datetime.now().strftime('%Y-%m-%d')}"
     )
 
-# ========== ИСПРАВЛЕНИЕ ЗДЕСЬ ==========
-# Удаляем ВЕСЬ код, который запускал бота (asyncio.run(main()) и run_bot()).
-# Теперь бот будет запускаться только из app.py через вебхуки.
-# Объекты bot, dp и все обработчики остаются для импорта.
+# ---------- РЕГИСТРАЦИЯ ВСЕХ ОБРАБОТЧИКОВ ----------
+# Принудительно выводим список зарегистрированных обработчиков для отладки
+logger.info(f"📊 Зарегистрировано message-обработчиков: {len(dp.message.handlers)}")
+logger.info(f"📊 Зарегистрировано callback-обработчиков: {len(dp.callback_query.handlers)}")
 
 print("✅ Бот успешно импортирован. Обработчики загружены.")
